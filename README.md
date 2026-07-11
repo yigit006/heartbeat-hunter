@@ -1,3 +1,4 @@
+[![CI](https://github.com/yigit006/heartbeat-hunter/actions/workflows/ci.yml/badge.svg)](https://github.com/yigit006/heartbeat-hunter/actions)
 # Heartbeat Hunter
 
 İstatistiksel temelli C2 beaconing tespit motoru. Zeek `conn.log` verisinden, jitter'lı
