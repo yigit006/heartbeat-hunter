@@ -12,28 +12,53 @@ Literatur dersleri (gunluk Bolum 8):
 Tasarim ilkesi: her alt-skor 0-1 araliginda ve "1 = beacon gibi". NaN alt-skor
 "sinyal bilinmiyor" demektir; agirlikli ortalamadan paydasıyla birlikte duser
 (cezalandirmaz da odullendirmez de).
+
+BAGLAM v2 - HUNI MIMARISI (gunluk Bolum 10): CTU-42 sinavi gosterdi ki skor
+tek basina yetmiyor - top-20'nin tamami mesru periyodik altyapiydi (NTP, SNMP,
+ic izleme). Literaturun cevabi (BAYWATCH huni, Elastic yon filtresi, RITA/AC
+safelist rehberi) agirlik degil FILTRE: skor "beacon-gibiligi" olcer, kapsam
+filtresi ise "bu C2 sorusu icin gecerli mi" der. Iki ayri soru, iki ayri
+mekanizma:
+- in_scope = dis hedef VE altyapi-portu-degil. Ic izleme/NTP/SNMP periyodiktir
+  ama C2 arama uzayinda degildir (Elastic ayni filtreyi transform sorgusunda
+  uygular: "source local AND destination remote").
+- s_port alt-skoru (agirlikli): kapsam ICINDE kalanlar arasinda, standart-disi
+  dis port (orn. 888) supheyi artirir; 80/443 notrdur (C2 de oradan gecer).
 """
 
 from __future__ import annotations
+
+import ipaddress
 
 import numpy as np
 import pandas as pd
 
 from hhunter.features import extract_features
 
-# Agirliklar: zaman ~0.60, bayt ~0.25, baglam ~0.15.
+# Agirliklar: zaman ~0.55, bayt ~0.25, baglam ~0.20.
 # RITA final skoru zaman/bayt yarilarini 50/50 ortalar; biz zaman tarafinda
 # daha zengin (dom-kume + Schuster) oldugumuz icin zamana biraz fazla veriyoruz.
 DEFAULT_WEIGHTS: dict[str, float] = {
-    "s_dom": 0.25,  # baskin-kume: dom_support * (1 - dom_cv/0.3)
-    "s_mad": 0.15,  # dayanikli aralik duzeni (katlanmis seri oncelikli)
-    "s_schuster": 0.20,  # frekans-uzayi anlamliligi
+    "s_dom": 0.23,  # baskin-kume: dom_support * (1 - dom_cv/0.3)
+    "s_mad": 0.14,  # dayanikli aralik duzeni (katlanmis seri oncelikli)
+    "s_schuster": 0.18,  # frekans-uzayi anlamliligi
     "s_bytes_reg": 0.15,  # bayt tutarliligi (RITA dsMADM'in oransal hali)
     "s_bytes_skew": 0.05,  # bayt simetrisi (Bowley)
     "s_bytes_small": 0.05,  # kucuk payload (RITA dsSmallness: 1 - mod/65535)
-    "s_rare_dst": 0.10,  # hedef nadirligi: 1 / (o hedefe giden ic makine sayisi)
+    "s_rare_dst": 0.07,  # hedef nadirligi: 1 / (o hedefe giden ic makine sayisi)
     "s_persist": 0.05,  # sureklilik: kanal, gozlem penceresinin ne kadarinda aktif
+    "s_port": 0.08,  # port kategorisi: altyapi 0, web notr, standart-disi supheli
 }
+
+# Altyapi portlari: mesru periyodik servislerin klasik FP siniflari
+# (AC/RITA rehberi: NTP ~15dk check-in tipik benign beacon; ayrica SNMP polling,
+# DNS, syslog, DHCP, mDNS/SSDP kesif trafigi, NetBIOS/SMB ic gurultusu).
+INFRA_PORTS: frozenset[int] = frozenset(
+    {53, 67, 68, 123, 137, 138, 139, 161, 162, 445, 514, 1900, 5353}
+)
+# Web portlari: C2'nin en sik sakladigi yerler (Elastic: 53/80/8080/443) -
+# cezalandirilmaz ama odullendirilmez de (notr 0.5).
+WEB_PORTS: frozenset[int] = frozenset({80, 443, 8080, 8443})
 
 
 def byte_stats(sizes) -> dict[str, float]:
@@ -85,8 +110,42 @@ def compute_subscores(feats: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_context(pairs: pd.DataFrame) -> pd.DataFrame:
-    """Baglam sinyalleri: hedef nadirligi + sureklilik.
+def _is_internal_ip(ip: str, internal_nets: list[ipaddress.IPv4Network]) -> bool:
+    """Hedef IP ic aga mi ait? RFC1918/loopback/link-local/multicast/broadcast
+    her zaman 'ic/yerel' sayilir; internal_nets ile kurulusa ozgu kamu bloklari
+    eklenir (orn. CTU-13'te universitenin 147.32.0.0/16'si)."""
+    try:
+        addr = ipaddress.ip_address(str(ip))
+    except ValueError:
+        return False
+    if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_multicast:
+        return True
+    if getattr(addr, "packed", None) and addr == ipaddress.ip_address("255.255.255.255"):
+        return True
+    return any(addr in net for net in internal_nets)
+
+
+def _port_score(port: object) -> float:
+    """Port kategorisi alt-skoru: altyapi 0.0, web notr 0.5, standart-disi 0.8.
+
+    Standart-disi dis port (orn. 888, 4444) mesru otomasyonda nadirdir -
+    update/telemetri 80/443'ten akar. Tam 1.0 degil 0.8: port tek basina
+    suc kaniti degildir, sadece supheyi artirir."""
+    if pd.isna(port):
+        return np.nan
+    p = int(port)
+    if p in INFRA_PORTS:
+        return 0.0
+    if p in WEB_PORTS:
+        return 0.5
+    return 0.8
+
+
+def add_context(
+    pairs: pd.DataFrame,
+    internal_nets: list[str] | None = None,
+) -> pd.DataFrame:
+    """Baglam sinyalleri (v2): nadirlik + sureklilik + yon + port + kapsam.
 
     - s_rare_dst = 1/prevalence: hedefe giden benzersiz ic kaynak sayisinin
       tersi. NTP havuzu/update CDN'ine onlarca makine gider (skor ~0), gercek
@@ -95,7 +154,13 @@ def add_context(pairs: pd.DataFrame) -> pd.DataFrame:
       ayni sinyali farkli soruya cevap olarak kullanir, celiski degildir.
     - s_persist: (last_seen - first_seen) / gozlem penceresi. Beacon kanali
       sureklidir; 10 dakikalik bir gezinme oturumu degil.
+    - dst_is_internal: hedef ic ag/yerel mi (yon sinyali). C2 beaconing tanimi
+      geregi DISARI cikar; ic->ic periyodik trafik izleme/altyapidir.
+    - s_port: port kategorisi (bkz. _port_score).
+    - in_scope: dis hedef VE altyapi-portu-degil. Huninin kapsam filtresi;
+      skor hesabina karismaz, raporlama katmani kullanir.
     """
+    nets = [ipaddress.ip_network(n) for n in (internal_nets or [])]
     out = pairs.copy()
     prevalence = out.groupby("dst_ip")["src_ip"].transform("nunique")
     out["dst_prevalence"] = prevalence
@@ -103,6 +168,9 @@ def add_context(pairs: pd.DataFrame) -> pd.DataFrame:
     window = float(out["last_seen"].max() - out["first_seen"].min())
     span = out["last_seen"] - out["first_seen"]
     out["s_persist"] = (span / window).clip(0.0, 1.0) if window > 0 else 0.0
+    out["dst_is_internal"] = out["dst_ip"].map(lambda ip: _is_internal_ip(ip, nets))
+    out["s_port"] = out["dst_port"].map(_port_score)
+    out["in_scope"] = ~out["dst_is_internal"] & (out["s_port"] > 0.0)
     return out
 
 
@@ -110,6 +178,7 @@ def score_pairs(
     pairs: pd.DataFrame,
     weights: dict[str, float] | None = None,
     burst_gap: float = 5.0,
+    internal_nets: list[str] | None = None,
 ) -> pd.DataFrame:
     """Tam Katman-2 boru hatti: pairs -> ozellikler -> alt-skorlar -> bilesik skor.
 
@@ -135,10 +204,11 @@ def score_pairs(
         )
     feats = pd.concat([feats, bstats], axis=1)
 
-    ctx = add_context(pairs)
+    ctx = add_context(pairs, internal_nets=internal_nets)
     sub = compute_subscores(feats)
     sub["s_rare_dst"] = ctx["s_rare_dst"]
     sub["s_persist"] = ctx["s_persist"]
+    sub["s_port"] = ctx["s_port"]
     sub = sub[list(w.index)]
 
     weighted_sum = sub.mul(w, axis=1).sum(axis=1, skipna=True)
@@ -146,7 +216,7 @@ def score_pairs(
     score = weighted_sum / weight_present.replace(0.0, np.nan)
 
     out = pd.concat(
-        [ctx[["dst_prevalence"]], pairs, feats, sub],
+        [ctx[["dst_prevalence", "dst_is_internal", "in_scope"]], pairs, feats, sub],
         axis=1,
     )
     out["score"] = score
@@ -160,6 +230,9 @@ def threshold_for_budget(scores, max_alerts: int) -> float:
     gercekten turetilmis esik: en yuksek N. skoru esik yap. Esik degil siralama
     onemlidir - dedektorun isi supheli olani listenin basina getirmek.
     """
+    if max_alerts <= 0:
+        # butce 0 = hicbir alarm istemiyorum -> hicbir skor esigi gecemesin
+        return float("inf")
     s = np.sort(pd.to_numeric(pd.Series(scores), errors="coerce").dropna().to_numpy())[::-1]
     if len(s) == 0:
         return 1.0

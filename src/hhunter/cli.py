@@ -78,8 +78,23 @@ def score(
     top: int = typer.Option(20, help="Listelenecek en supheli kanal sayisi"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Skorlu parquet cikisi"),
     min_connections: int = typer.Option(8, help="Skorlanacak cift icin minimum baglanti"),
+    internal_net: list[str] = typer.Option(
+        [],
+        "--internal-net",
+        help="Ic ag CIDR'i (tekrarlanabilir). RFC1918 zaten dahil; kurulusun kamu blogu icin (orn. CTU-13: 147.32.0.0/16)",
+    ),
+    show_all: bool = typer.Option(
+        False,
+        "--all",
+        help="Kapsam disi ciftleri de listele (ic hedefler, altyapi portlari)",
+    ),
 ) -> None:
-    """Cift parquet'ini (ingest -o ciktisi) skorla, en supheli kanallari listele."""
+    """Cift parquet'ini (ingest -o ciktisi) skorla, en supheli kanallari listele.
+
+    Huni mimarisi: skor 'beacon-gibiligi' olcer; kapsam filtresi (dis hedef +
+    altyapi-portu-degil) C2 arama uzayini daraltir. Varsayilan liste yalniz
+    kapsam ici adaylari gosterir; --all ham siralamayi verir.
+    """
     import pandas as pd
     from rich.table import Table
 
@@ -87,10 +102,18 @@ def score(
 
     pairs = pd.read_parquet(path)
     pairs = pairs[pairs["count"] >= min_connections]
-    scored = score_pairs(pairs)
+    scored = score_pairs(pairs, internal_nets=internal_net or None)
     if output:
         scored.to_parquet(output)
         console.print(f"[green]Yazildi:[/] {output}")
+
+    n_total = len(scored)
+    if not show_all:
+        scored = scored[scored["in_scope"]]
+    console.print(
+        f"Kapsam filtresi: {n_total:,} cift -> {len(scored):,} aday "
+        f"(dis hedef + altyapi-portu-degil){' [--all: filtre kapali]' if show_all else ''}"
+    )
 
     label_col = next((c for c in ("is_cc", "is_beacon", "is_botnet") if c in scored.columns), None)
     table = Table(title=f"En supheli {top} kanal ({len(scored):,} cift skorlandi)")

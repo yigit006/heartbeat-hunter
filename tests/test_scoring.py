@@ -96,6 +96,61 @@ def test_threshold_for_budget() -> None:
     assert sum(s >= t for s in scores) == 2
     # Butce eleman sayisindan buyukse en dusuk skor doner
     assert threshold_for_budget(scores, max_alerts=99) == 0.5
+    # Butce 0: hicbir skor esigi gecememeli (kenar durum)
+    assert not any(s >= threshold_for_budget(scores, max_alerts=0) for s in scores)
+
+
+def _mini_pairs(rows: list[tuple[str, str, int]]) -> pd.DataFrame:
+    """(src, dst, port) listesinden ayni temiz beacon desenli pairs tablosu."""
+    base = np.arange(0, 6 * 3600, 60.0)
+    return pd.DataFrame(
+        {
+            "src_ip": [r[0] for r in rows],
+            "dst_ip": [r[1] for r in rows],
+            "dst_port": [r[2] for r in rows],
+            "timestamps": [base] * len(rows),
+            "count": [len(base)] * len(rows),
+            "first_seen": [base[0]] * len(rows),
+            "last_seen": [base[-1]] * len(rows),
+        }
+    )
+
+
+def test_scope_funnel_direction_and_ports() -> None:
+    """Huni kapsami: ic hedef ve altyapi portu kapsam disi, dis+web ici."""
+    scored = score_pairs(
+        _mini_pairs(
+            [
+                ("10.0.0.1", "192.168.1.5", 27001),  # ic hedef (RFC1918) -> disi
+                ("10.0.0.1", "129.6.15.28", 123),  # NTP: dis ama altyapi portu -> disi
+                # NOT: 203.0.113.x (TEST-NET) ipaddress'te 'private' sayilir -
+                # kapsam testi icin gercek kamu IP'si gerekir
+                ("10.0.0.1", "93.184.216.34", 443),  # dis + web -> ici
+                ("10.0.0.1", "147.32.30.4", 80),  # kurulusun kamu blogu -> disi
+            ]
+        ),
+        internal_nets=["147.32.0.0/16"],
+    )
+    scope = scored.set_index("dst_ip")["in_scope"]
+    assert not scope["192.168.1.5"]
+    assert not scope["129.6.15.28"]
+    assert scope["93.184.216.34"]
+    assert not scope["147.32.30.4"]
+
+
+def test_port_category_affects_score() -> None:
+    """Ayni desen: standart-disi dis port, altyapi portundan yuksek skor almali."""
+    scored = score_pairs(
+        _mini_pairs(
+            [
+                ("10.0.0.1", "203.0.113.1", 888),  # standart-disi
+                ("10.0.0.2", "203.0.113.2", 443),  # web (notr)
+                ("10.0.0.3", "203.0.113.3", 123),  # altyapi
+            ]
+        )
+    )
+    by_port = scored.set_index("dst_port")["score"]
+    assert by_port[888] > by_port[443] > by_port[123]
 
 
 def test_permutation_significance_beacon_vs_poisson(rng) -> None:
