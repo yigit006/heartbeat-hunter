@@ -90,11 +90,13 @@ def read_binetflow(path: str | Path) -> pd.DataFrame:
         dtype={"Label": "string", "SrcAddr": "string", "DstAddr": "string"},
         low_memory=False,
     )
-    # StartTime: '2011/08/10 09:46:53.047277' formatinda -> epoch saniye
+    # StartTime: '2011/08/10 09:46:53.047277' formatinda -> epoch saniye.
+    # DIKKAT: ts.astype("int64") NaT'i NaN degil -9.2e9 cop degere cevirir ve
+    # dropna yakalamaz (kod denetiminde bulundu). total_seconds NaT -> NaN yapar.
     ts = pd.to_datetime(df["StartTime"], format="%Y/%m/%d %H:%M:%S.%f", errors="coerce")
     out = pd.DataFrame(
         {
-            "ts": ts.astype("int64") / 1e9,
+            "ts": (ts - pd.Timestamp(0)).dt.total_seconds(),
             "src_ip": df["SrcAddr"],
             "dst_ip": df["DstAddr"],
             # Dport bazen hex ('0x0303') veya bos gelir
@@ -141,7 +143,11 @@ def group_pairs(df: pd.DataFrame, min_connections: int = 4) -> pd.DataFrame:
     counts = df.groupby(keys, observed=True).size()
     eligible = counts[counts >= min_connections].index
     if len(eligible) == 0:
-        return pd.DataFrame(columns=[*keys, "timestamps", "count", "first_seen", "last_seen"])
+        # Bos donuste de dolu donusle AYNI sema: opsiyonel/etiket kolonlari dahil
+        cols = [*keys, "timestamps", "count", "first_seen", "last_seen"]
+        cols += [f"{c}_list" for c in ("orig_bytes", "duration") if c in df.columns]
+        cols += [c for c in ("is_beacon", "is_botnet", "is_cc") if c in df.columns]
+        return pd.DataFrame(columns=cols)
     df = df.set_index(keys).loc[eligible].reset_index()
 
     agg: dict[str, tuple[str, object]] = {

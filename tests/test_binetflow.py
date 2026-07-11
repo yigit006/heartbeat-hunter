@@ -15,6 +15,7 @@ StartTime,Dur,Proto,SrcAddr,Sport,Dir,DstAddr,Dport,State,sTos,dTos,TotPkts,TotB
 2011/08/10 09:50:10.000000,5.300000,tcp,147.32.84.10,50001,   ->,8.8.8.8,443,SF,0,0,50,60000,20000,flow=Background
 2011/08/10 09:51:20.000000,0.001000,udp,147.32.84.11,5060,   ->,10.0.0.1,0x0303,CON,0,0,2,200,100,flow=Background-UDP
 2011/08/10 09:52:00.000000,,tcp,147.32.84.12,1111,   ->,1.2.3.4,,S0,0,0,1,60,60,flow=Background
+BOZUK-TARIH,1.000000,tcp,147.32.84.13,2222,   ->,5.6.7.8,80,SF,0,0,1,60,60,flow=Background
 """
 
 
@@ -28,9 +29,16 @@ def binetflow(tmp_path: Path) -> Path:
 def test_read_binetflow_schema(binetflow: Path) -> None:
     df = read_binetflow(binetflow)
     assert set(["ts", "src_ip", "dst_ip", "dst_port", "is_botnet"]).issubset(df.columns)
-    # Port'u olmayan son satir dusmeli
+    # Port'u olmayan ve tarihi bozuk satirlar dusmeli
     assert len(df) == 6
     assert df["ts"].is_monotonic_increasing
+
+
+def test_malformed_starttime_dropped_not_garbage(binetflow: Path) -> None:
+    """NaT bug regresyonu: bozuk StartTime -9.2e9 cop epoch olarak SIZMAMALI."""
+    df = read_binetflow(binetflow)
+    assert "147.32.84.13" not in set(df["src_ip"])
+    assert (df["ts"] > 0).all()
 
 
 def test_botnet_labels(binetflow: Path) -> None:
