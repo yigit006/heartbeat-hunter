@@ -88,6 +88,9 @@ def score(
         "--all",
         help="Kapsam disi ciftleri de listele (ic hedefler, altyapi portlari)",
     ),
+    json_out: bool = typer.Option(
+        False, "--json", help="Tablo yerine JSON cikti (SIEM/boru hatti entegrasyonu)"
+    ),
 ) -> None:
     """Cift parquet'ini (ingest -o ciktisi) skorla, en supheli kanallari listele.
 
@@ -110,12 +113,20 @@ def score(
     n_total = len(scored)
     if not show_all:
         scored = scored[scored["in_scope"]]
+
+    label_col = next((c for c in ("is_cc", "is_beacon", "is_botnet") if c in scored.columns), None)
+    if json_out:
+        cols = ["score", "src_ip", "dst_ip", "dst_port", "count", "dom_mode",
+                "period_est", "dst_prevalence", "in_scope"]
+        if label_col:
+            cols.append(label_col)
+        print(scored.head(top)[cols].to_json(orient="records", indent=2))
+        return
+
     console.print(
         f"Kapsam filtresi: {n_total:,} cift -> {len(scored):,} aday "
         f"(dis hedef + altyapi-portu-degil){' [--all: filtre kapali]' if show_all else ''}"
     )
-
-    label_col = next((c for c in ("is_cc", "is_beacon", "is_botnet") if c in scored.columns), None)
     table = Table(title=f"En supheli {top} kanal ({len(scored):,} cift skorlandi)")
     for col in ("skor", "src", "dst", "port", "n", "periyot(sn)", "hedef-yayg.", "etiket"):
         table.add_column(col)
@@ -140,6 +151,9 @@ def campaign(
     min_sources: int = typer.Option(2, help="Kampanya icin minimum ic kaynak sayisi"),
     top: int = typer.Option(20, help="Listelenecek kampanya sayisi"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Kampanya parquet cikisi"),
+    json_out: bool = typer.Option(
+        False, "--json", help="Tablo yerine JSON cikti (SIEM/boru hatti entegrasyonu)"
+    ),
 ) -> None:
     """Skorlu parquet'ten (score -o ciktisi) kampanya adaylarini cikar.
 
@@ -157,6 +171,9 @@ def campaign(
     if output:
         camps.to_parquet(output)
         console.print(f"[green]Yazildi:[/] {output}")
+    if json_out:
+        print(camps.head(top).to_json(orient="records", indent=2))
+        return
     if camps.empty:
         console.print(
             "Kampanya adayi yok. Not: tek enfekte makineli yakalamada (orn. CTU-42) "
