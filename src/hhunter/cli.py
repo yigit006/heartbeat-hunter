@@ -1,5 +1,7 @@
 """Heartbeat Hunter komut satiri arayuzu."""
 
+from typing import Optional
+
 import typer
 from rich.console import Console
 
@@ -18,7 +20,7 @@ def version() -> None:
 @app.command()
 def ingest(
     path: str,
-    output: str = typer.Option(None, "--output", "-o", help="Parquet cikis yolu"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Parquet cikis yolu"),
     min_connections: int = typer.Option(4, help="Cift basina minimum baglanti sayisi"),
 ) -> None:
     """Zeek conn.log veya CTU-13 .binetflow dosyasini oku, ciftleri cikar, ozetle."""
@@ -68,6 +70,44 @@ def simulate(
         f"[green]Uretildi:[/] {output} - {len(df):,} baglanti "
         f"({n_b:,} beacon, {len(df) - n_b:,} insan)"
     )
+
+
+@app.command()
+def score(
+    path: str,
+    top: int = typer.Option(20, help="Listelenecek en supheli kanal sayisi"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Skorlu parquet cikisi"),
+    min_connections: int = typer.Option(8, help="Skorlanacak cift icin minimum baglanti"),
+) -> None:
+    """Cift parquet'ini (ingest -o ciktisi) skorla, en supheli kanallari listele."""
+    import pandas as pd
+    from rich.table import Table
+
+    from hhunter.scoring import score_pairs
+
+    pairs = pd.read_parquet(path)
+    pairs = pairs[pairs["count"] >= min_connections]
+    scored = score_pairs(pairs)
+    if output:
+        scored.to_parquet(output)
+        console.print(f"[green]Yazildi:[/] {output}")
+
+    label_col = next((c for c in ("is_cc", "is_beacon", "is_botnet") if c in scored.columns), None)
+    table = Table(title=f"En supheli {top} kanal ({len(scored):,} cift skorlandi)")
+    for col in ("skor", "src", "dst", "port", "n", "periyot(sn)", "hedef-yayg.", "etiket"):
+        table.add_column(col)
+    for _, r in scored.head(top).iterrows():
+        table.add_row(
+            f"{r['score']:.3f}",
+            str(r["src_ip"]),
+            str(r["dst_ip"]),
+            str(r["dst_port"]),
+            str(r["count"]),
+            f"{r['dom_mode']:.0f}" if pd.notna(r["dom_mode"]) else "-",
+            str(r["dst_prevalence"]),
+            ("[red]EVET[/]" if r[label_col] else "-") if label_col else "?",
+        )
+    console.print(table)
 
 
 if __name__ == "__main__":
