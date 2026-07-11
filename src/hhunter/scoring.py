@@ -45,10 +45,16 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "s_bytes_reg": 0.15,  # bayt tutarliligi (RITA dsMADM'in oransal hali)
     "s_bytes_skew": 0.05,  # bayt simetrisi (Bowley)
     "s_bytes_small": 0.05,  # kucuk payload (RITA dsSmallness: 1 - mod/65535)
-    "s_rare_dst": 0.07,  # hedef nadirligi: 1 / (o hedefe giden ic makine sayisi)
     "s_persist": 0.05,  # sureklilik: kanal, gozlem penceresinin ne kadarinda aktif
     "s_port": 0.08,  # port kategorisi: altyapi 0, web notr, standart-disi supheli
 }
+# NOT - s_rare_dst KANAL skorunda YOK (S9 dersi, gunluk Bolum 13): hedef
+# nadirligi cok-bot'lu yakalamada TERSine doner - 10 bot ayni C2'ye gidince
+# C2'nin prevalence'i 10 olur (skor 0.1), mesru tek-istemcili yoklamalar 1.0
+# alir; sinyal kampanyalasmis C2'yi cezalandirir. Olcum: S9'da agirliksiz
+# ilk-CC 68->46, R@500 16->20 (S42'de kucuk gerileme 27->37 - kabul edildi).
+# Nadirlik monoton bir "suphelilik" sinyali degildir; dogru tuketicisi
+# prevalence'in TERSINI kanit sayan kampanya katmanidir (campaign.py).
 
 # Altyapi portlari: mesru periyodik servislerin klasik FP siniflari
 # (AC/RITA rehberi: NTP ~15dk check-in tipik benign beacon; ayrica SNMP polling,
@@ -206,7 +212,6 @@ def score_pairs(
 
     ctx = add_context(pairs, internal_nets=internal_nets)
     sub = compute_subscores(feats)
-    sub["s_rare_dst"] = ctx["s_rare_dst"]
     sub["s_persist"] = ctx["s_persist"]
     sub["s_port"] = ctx["s_port"]
     sub = sub[list(w.index)]
@@ -216,7 +221,8 @@ def score_pairs(
     score = weighted_sum / weight_present.replace(0.0, np.nan)
 
     out = pd.concat(
-        [ctx[["dst_prevalence", "dst_is_internal", "in_scope"]], pairs, feats, sub],
+        # s_rare_dst kanal skoruna girmez ama analiz/kampanya icin ciktida kalir
+        [ctx[["dst_prevalence", "dst_is_internal", "in_scope", "s_rare_dst"]], pairs, feats, sub],
         axis=1,
     )
     out["score"] = score

@@ -81,6 +81,26 @@ ateşleyemez (≥2 kaynak şartı) — orada 55 aday/0 CC.
 hhunter campaign scored.parquet          # kampanya adayları
 ```
 
+## Değerlendirme (CTU-13, kapsam-içi adaylar)
+
+![PR eğrileri](docs/img/pr_curves.png)
+
+| Senaryo | Sıralayıcı | İlk CC sırası | R@100 | R@500 |
+|---|---|---|---|---|
+| S1/42 (Neris, 1 bot) | naif −CV (baseline) | 59 | 0.25 | 0.50 |
+| S1/42 (Neris, 1 bot) | bileşik skor | **37** | 0.25 | 0.50 |
+| S9/50 (Neris, 10 bot) | naif −CV (baseline) | 87 | 0.16 | 0.27 |
+| S9/50 (Neris, 10 bot) | bileşik skor | **46** | 0.10 | **0.41** |
+| S9/50 (Neris, 10 bot) | **kampanya (hedef düzeyi)** | **#1 / 94 aday** | — | — |
+
+Katmanlı okuma: kanal düzeyinde, binlerce meşru periyodik yoklama (e-posta,
+izleme, update) arasında C2'yi tek başına ayırmak istatistiksel dedektörlerin
+ortak zorluğu (AP ≈ 0.03). Aracın asıl av listesi **kampanya düzeyi** —
+gerçek C2, 94 aday arasında 1. sırada. İki tasarım dersi ölçümle belgelendi:
+hedef-nadirlik sinyali çok-bot'lu yakalamada tersine döner (kanal skorundan
+çıkarıldı, kampanya katmanına taşındı) ve Rbot senaryoları (S10/S11) CC
+beaconing'i ölçülebilir yoğunlukta içermediğinden değerlendirme dışıdır.
+
 ## Kurulum
 
 ```bash
@@ -99,7 +119,8 @@ hhunter --help
 - [x] Hafta 2: Zaman serisi katmanı (baskın-küme CV, MAD, Bowley, Schuster periodogramı)
 - [x] Hafta 3: Bileşik skorlama (zaman+bayt+bağlam) + permütasyon anlamlılığı + huni filtresi
 - [x] Hafta 3: Graf analizi / kampanya tespiti (networkx) — `hhunter campaign`
-- [ ] Hafta 4: Çok-hostlu senaryolar (CTU 9/10/11) — kampanya katmanının gerçek sınavı
+- [x] Hafta 4: Çok-hostlu senaryo (S9) + değerlendirme altyapısı + PR eğrileri
+- [ ] Hafta 4 kalan: üçüncü uygun senaryo (S2/S13), README mini-makale, CLI `--json`
 - [ ] Hafta 4: CTU-13 değerlendirmesi (precision/recall) + dokümantasyon
 
 ## Lisans

@@ -44,15 +44,16 @@ def test_beacons_rank_top_on_simulated() -> None:
     assert med_b > med_h + 0.25
 
 
-def test_rare_destination_scores_higher() -> None:
-    """Ayni zamansal desen: nadir hedef, populer hedeften yuksek skor almali."""
+def test_prevalence_stays_out_of_channel_score() -> None:
+    """S9 dersi (gunluk Bolum 13): hedef nadirligi KANAL skoruna girmez.
+
+    Cok-bot'lu yakalamada nadirlik tersine doner (10 bot ayni C2'ye gidince
+    C2 'populer' gorunur ve cezalanir). Ayni zamansal desenle nadir ve populer
+    hedef AYNI kanal skorunu almali; nadirlik bilgisi ciktida tasinir
+    (s_rare_dst kolonu) ve tuketicisi kampanya katmanidir."""
     base = np.arange(0, 6 * 3600, 60.0)
-    rows = []
-    # 5 farkli kaynak AYNI populer hedefe (update sunucusu deseni)
-    for i in range(5):
-        rows.append(("10.0.0.%d" % i, "203.0.113.9", base))
-    # 1 kaynak nadir hedefe (C2 deseni)
-    rows.append(("10.0.0.99", "198.51.100.7", base))
+    rows = [("10.0.0.%d" % i, "203.0.113.9", base) for i in range(5)]  # populer hedef
+    rows.append(("10.0.0.99", "198.51.100.7", base))  # nadir hedef
     pairs = pd.DataFrame(
         {
             "src_ip": [r[0] for r in rows],
@@ -67,7 +68,8 @@ def test_rare_destination_scores_higher() -> None:
     scored = score_pairs(pairs)
     rare = scored[scored["dst_ip"] == "198.51.100.7"]["score"].iloc[0]
     popular = scored[scored["dst_ip"] == "203.0.113.9"]["score"].max()
-    assert rare > popular
+    assert abs(rare - popular) < 1e-9  # ayni desen = ayni skor
+    assert "s_rare_dst" in scored.columns  # bilgi kaybolmaz, kampanya katmanina akar
 
 
 def test_missing_bytes_not_penalized() -> None:
