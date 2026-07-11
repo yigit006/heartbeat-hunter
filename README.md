@@ -131,6 +131,20 @@ hhunter score pairs.parquet --json | jq '.[0]'
 hhunter campaign scored.parquet --json
 ```
 
+## Analiz paneli (Streamlit)
+
+CLI hunisinin insan-dostu yüzü — panel yalnızca okur, tüm analiz boru
+hattında yapılır (ikinci bir hesaplama yolu yok):
+
+```bash
+pip install -e ".[demo]"
+streamlit run app.py
+```
+
+Üç görünüm: filtreli aday tablosu, kanal detayı (zaman çizgisi + inter-arrival
+dağılımı + periodogram + alt-skor kırılımı — "skor neden yüksek?" sorusunun
+cevabı) ve kampanya listesi.
+
 ## Sınırlamalar (ölçülmüş ve belgeli)
 
 - **%50+ jitter** tespit sınırıdır — aralıklar o noktada gerçek gürültüye
@@ -143,7 +157,10 @@ hhunter campaign scored.parquet --json
 - **Rbot/DDoS senaryoları (S10/S11) değerlendirilemedi**: CC beaconing'i
   ölçülebilir yoğunlukta değil — veri-uygunluk analizi olarak raporlandı.
 - Gelecek iş: PU-learning ile az-pozitif kalibrasyon, Elastic-esini bucket
-  otokorelasyonu (yüksek jitter), Streamlit paneli.
+  otokorelasyonu (yüksek jitter); 50GB+/gün ölçeği için ingestion katmanının
+  Polars/lazy-scan'e taşınması (şema kaynak-bağımsız olduğundan değişiklik
+  `ingest.py` ile sınırlı kalır — bu ölçekte pandas bilinçli tercihti: 2.8M
+  akış 14 sn).
 
 ## Yol Haritası
 
@@ -154,6 +171,7 @@ hhunter campaign scored.parquet --json
 - [x] Hafta 4: Çok-hostlu senaryo (S9) + değerlendirme altyapısı + PR eğrileri
 - [x] Hafta 4: 4 senaryoda değerlendirme (Neris ×3 + Virut) — aile-ötesi genelleme
 - [x] Hafta 4: CLI `--json` (SIEM entegrasyonu) + sınırlamalar dokümantasyonu
+- [x] Bonus: Streamlit analiz paneli (`streamlit run app.py`)
 - [ ] Hafta 4: CTU-13 değerlendirmesi (precision/recall) + dokümantasyon
 
 ## Lisans
