@@ -7,6 +7,7 @@ name = "hhunter"
 version = "0.1.0"
 description = "Heartbeat Hunter - istatistiksel C2 beaconing tespit motoru (Zeek/NetFlow)"
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [{ name = "Yigit Yucel", email = "yigit.yucel.official@gmail.com" }]
 dependencies = [
