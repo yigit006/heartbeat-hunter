@@ -121,3 +121,19 @@ def test_extract_features_keys(rng) -> None:
     feats = extract_features(_beacon(rng))
     for key in ("raw_cv", "col_cv", "col_mad_cv", "dom_mode", "dom_cv", "period_est", "schuster_sig"):
         assert key in feats
+
+
+def test_extract_features_caps_giant_series(rng) -> None:
+    """Dev seri korumasi: 415k olayli DNS kanali (S9 gercegi) analizi kilitlememeli.
+
+    Bas-pencere kirpmasi periyodikligi korur: kirpilmis beacon hala beacon.
+    n_events HAM sayiyi raporlar (kullanici kanalin gercek boyutunu gormeli).
+    """
+    ts = np.arange(0, 60.0 * 50_000, 60.0)  # 50k olayli mukemmel beacon
+    feats = extract_features(ts, max_events=20_000)
+    assert feats["n_events"] == 50_000  # ham sayi korunur
+    assert feats["dom_cv"] < 0.05  # kirpilmis seri hala temiz beacon
+    # NOT: period_est burada iddia edilmez - jitter'siz mukemmel tarakta tum
+    # harmonikler tam guc alir (gunluk Bolum 6'daki tuzak); testin konusu
+    # kirpma mekanigi. Periyot dogrulugu dom_mode ile kilitlenir:
+    assert abs(feats["dom_mode"] - 60.0) / 60.0 < 0.01

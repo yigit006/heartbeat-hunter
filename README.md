@@ -66,9 +66,16 @@ hhunter score pairs.parquet --all                          # ham sıralama
 Tek beacon anomalidir; aynı hedefe **benzer periyotla** beacon atan ≥2 iç
 makine kampanyadır. Skorlu kanallar iki parçalı grafa (kaynak↔hedef) konur;
 paylaşılan hedefler periyot tutarlılığı ve kanal skorlarıyla birleşik
-`campaign_score` alır. Dürüst sınır: tek enfekte makineli CTU-42'de bu katman
-C2'yi mekanik olarak yakalayamaz (≥2 kaynak şartı) — gerçek sınavı Hafta 4'ün
-çok-hostlu senaryoları.
+`campaign_score` alır.
+
+**Çok-hostlu sınav (CTU-13 Senaryo 9, Neris, 10 bot):** tek-kanal skorlama
+ilk C2'yi 67. sıraya koyabildi; kampanya katmanı **gerçek C2'yi
+(195.190.13.70, 7 bot, 115 sn, tutarlılık 1.0) 1. sıraya** taşıdı. Senaryo
+42'de 8.177. sıraya gömülen ana C2 (173.192.170.88), 8 bot'un kolektif
+kanıtıyla kampanya #5. Top-10 kampanyanın 7'si botnet altyapısı — CC etiketi
+taşımayan spam/click-fraud kanalları dahil (etiket-ötesi tespit). Dürüst
+sınır: tek enfekte makineli yakalamada (S42) bu katman mekanik olarak
+ateşleyemez (≥2 kaynak şartı) — orada 55 aday/0 CC.
 
 ```bash
 hhunter campaign scored.parquet          # kampanya adayları

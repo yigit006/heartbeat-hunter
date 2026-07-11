@@ -251,16 +251,30 @@ def permutation_significance(
     }
 
 
-def extract_features(ts: np.ndarray, burst_gap: float = 5.0) -> dict[str, float]:
+# Dev serilere karsi koruma: Schuster taramasi O(n_frekans x n_olay); gercek
+# veride dejenere devler var (S9'da universite DNS cozucusune 415k akisli kanal!)
+# ve tek cift tum analizi dakikalarca kilitleyebilir. 20k olay, beacon
+# istatistigi icin fazlasiyla yeterli - bas-pencere (ilk N olay) alinir ki
+# inter-arrival anlambilimi bozulmasin (esit-aralikli altorneklem delta'lari
+# carpitirdi). n_events HAM sayiyi raporlamaya devam eder.
+MAX_EVENTS = 20_000
+
+
+def extract_features(
+    ts: np.ndarray, burst_gap: float = 5.0, max_events: int = MAX_EVENTS
+) -> dict[str, float]:
     """Bir ciftin tam ozellik vektoru: ham + burst-katlanmis istatistikler.
 
     Ham ve katlanmis istatistikleri AYRI tutariz: ikisinin farki bile sinyaldir
     (cok burst'lu ama altta periyodik = tipik gercek C2).
     """
-    ts = np.asarray(ts, dtype=float)
+    ts = np.sort(np.asarray(ts, dtype=float))
+    n_raw = len(ts)
+    if n_raw > max_events:
+        ts = ts[:max_events]
     raw = {f"raw_{k}": v for k, v in delta_stats(ts).items()}
     collapsed = collapse_bursts(ts, gap=burst_gap)
     col = {f"col_{k}": v for k, v in delta_stats(collapsed).items()}
     dom = dominant_interval(ts)  # RITA-esini: burst'lu ham seride bile calisir
     per = periodicity_features(collapsed if len(collapsed) >= MIN_EVENTS else ts)
-    return {**raw, **col, **dom, **per, "n_events": len(ts), "n_collapsed": len(collapsed)}
+    return {**raw, **col, **dom, **per, "n_events": n_raw, "n_collapsed": len(collapsed)}
