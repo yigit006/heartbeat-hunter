@@ -133,5 +133,51 @@ def score(
     console.print(table)
 
 
+@app.command()
+def campaign(
+    path: str,
+    min_score: float = typer.Option(0.5, help="Kanal icin minimum bilesik skor"),
+    min_sources: int = typer.Option(2, help="Kampanya icin minimum ic kaynak sayisi"),
+    top: int = typer.Option(20, help="Listelenecek kampanya sayisi"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Kampanya parquet cikisi"),
+) -> None:
+    """Skorlu parquet'ten (score -o ciktisi) kampanya adaylarini cikar.
+
+    Tek beacon anomalidir; ayni hedefe benzer periyotla beacon atan >=2 ic
+    makine kampanyadir. Graf katmani, skor katmaninin tek tek zayif buldugu
+    kanallari kolektif kanitla yukseltir.
+    """
+    import pandas as pd
+    from rich.table import Table
+
+    from hhunter.campaign import detect_campaigns
+
+    scored = pd.read_parquet(path)
+    camps = detect_campaigns(scored, min_score=min_score, min_sources=min_sources)
+    if output:
+        camps.to_parquet(output)
+        console.print(f"[green]Yazildi:[/] {output}")
+    if camps.empty:
+        console.print(
+            "Kampanya adayi yok. Not: tek enfekte makineli yakalamada (orn. CTU-42) "
+            "bu beklenen sonuctur - katmanin sinavi cok-hostlu senaryodur."
+        )
+        return
+
+    table = Table(title=f"Kampanya adaylari ({len(camps)})")
+    for col in ("kamp.skor", "hedef", "kaynak sayisi", "portlar", "periyot(sn)", "tutarlilik"):
+        table.add_column(col)
+    for _, r in camps.head(top).iterrows():
+        table.add_row(
+            f"{r['campaign_score']:.3f}",
+            str(r["dst_ip"]),
+            str(r["n_sources"]),
+            ",".join(str(p) for p in r["ports"]),
+            f"{r['period_median']:.0f}" if pd.notna(r["period_median"]) else "-",
+            f"{r['period_coherence']:.2f}",
+        )
+    console.print(table)
+
+
 if __name__ == "__main__":
     app()

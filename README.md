@@ -61,6 +61,19 @@ hhunter score pairs.parquet --internal-net 147.32.0.0/16   # kapsam-içi liste
 hhunter score pairs.parquet --all                          # ham sıralama
 ```
 
+## Yöntem (Katman 3): graf — anomaliden kampanyaya
+
+Tek beacon anomalidir; aynı hedefe **benzer periyotla** beacon atan ≥2 iç
+makine kampanyadır. Skorlu kanallar iki parçalı grafa (kaynak↔hedef) konur;
+paylaşılan hedefler periyot tutarlılığı ve kanal skorlarıyla birleşik
+`campaign_score` alır. Dürüst sınır: tek enfekte makineli CTU-42'de bu katman
+C2'yi mekanik olarak yakalayamaz (≥2 kaynak şartı) — gerçek sınavı Hafta 4'ün
+çok-hostlu senaryoları.
+
+```bash
+hhunter campaign scored.parquet          # kampanya adayları
+```
+
 ## Kurulum
 
 ```bash
@@ -78,7 +91,8 @@ hhunter --help
 - [x] Hafta 1: Zeek conn.log ingestion + beacon simülatörü
 - [x] Hafta 2: Zaman serisi katmanı (baskın-küme CV, MAD, Bowley, Schuster periodogramı)
 - [x] Hafta 3: Bileşik skorlama (zaman+bayt+bağlam) + permütasyon anlamlılığı + huni filtresi
-- [ ] Hafta 3: Graf analizi / kampanya tespiti (networkx)
+- [x] Hafta 3: Graf analizi / kampanya tespiti (networkx) — `hhunter campaign`
+- [ ] Hafta 4: Çok-hostlu senaryolar (CTU 9/10/11) — kampanya katmanının gerçek sınavı
 - [ ] Hafta 4: CTU-13 değerlendirmesi (precision/recall) + dokümantasyon
 
 ## Lisans
