@@ -21,10 +21,13 @@ def ingest(
     output: str = typer.Option(None, "--output", "-o", help="Parquet cikis yolu"),
     min_connections: int = typer.Option(4, help="Cift basina minimum baglanti sayisi"),
 ) -> None:
-    """Zeek conn.log dosyasini oku, ciftleri cikar, ozetle."""
-    from hhunter.ingest import group_pairs, read_conn_log
+    """Zeek conn.log veya CTU-13 .binetflow dosyasini oku, ciftleri cikar, ozetle."""
+    from hhunter.ingest import group_pairs, read_binetflow, read_conn_log
 
-    df = read_conn_log(path)
+    if path.endswith(".binetflow"):
+        df = read_binetflow(path)
+    else:
+        df = read_conn_log(path)
     pairs = group_pairs(df, min_connections=min_connections)
 
     console.print(f"[bold]{path}[/] okundu:")

@@ -72,6 +72,53 @@ def read_conn_log(path: str | Path) -> pd.DataFrame:
     return df.sort_values("ts").reset_index(drop=True)
 
 
+def read_binetflow(path: str | Path) -> pd.DataFrame:
+    """CTU-13 .binetflow (Argus bidirectional NetFlow) dosyasini oku.
+
+    Format: CSV, header'li. Ilgili kolonlar:
+    StartTime, Dur, Proto, SrcAddr, Sport, Dir, DstAddr, Dport, State,
+    sTos, dTos, TotPkts, TotBytes, SrcBytes, Label
+
+    Cikti semasi read_conn_log ile AYNIDIR (ts, src_ip, dst_ip, dst_port,
+    duration, orig_bytes) + 'is_botnet' ground-truth etiketi
+    (Label kolonunda 'Botnet' gecen satirlar).
+    """
+    path = Path(path)
+    df = pd.read_csv(
+        path,
+        usecols=["StartTime", "Dur", "SrcAddr", "DstAddr", "Dport", "SrcBytes", "Label"],
+        dtype={"Label": "string", "SrcAddr": "string", "DstAddr": "string"},
+        low_memory=False,
+    )
+    # StartTime: '2011/08/10 09:46:53.047277' formatinda -> epoch saniye
+    ts = pd.to_datetime(df["StartTime"], format="%Y/%m/%d %H:%M:%S.%f", errors="coerce")
+    out = pd.DataFrame(
+        {
+            "ts": ts.astype("int64") / 1e9,
+            "src_ip": df["SrcAddr"],
+            "dst_ip": df["DstAddr"],
+            # Dport bazen hex ('0x0303') veya bos gelir
+            "dst_port": df["Dport"].map(_parse_port).astype("Int64"),
+            "duration": pd.to_numeric(df["Dur"], errors="coerce"),
+            "orig_bytes": pd.to_numeric(df["SrcBytes"], errors="coerce"),
+            "is_botnet": df["Label"].str.contains("Botnet", case=False, na=False),
+        }
+    )
+    out = out.dropna(subset=["ts", "src_ip", "dst_ip", "dst_port"])
+    return out.sort_values("ts").reset_index(drop=True)
+
+
+def _parse_port(value: object) -> float:
+    """Port degerini parse et: '443', '0x0303', NaN -> float veya NaN."""
+    if pd.isna(value):
+        return float("nan")
+    s = str(value).strip()
+    try:
+        return float(int(s, 16)) if s.lower().startswith("0x") else float(int(s))
+    except ValueError:
+        return float("nan")
+
+
 def group_pairs(df: pd.DataFrame, min_connections: int = 4) -> pd.DataFrame:
     """(src_ip, dst_ip, dst_port) ucluleri icin zaman serilerini cikar.
 
@@ -91,6 +138,11 @@ def group_pairs(df: pd.DataFrame, min_connections: int = 4) -> pd.DataFrame:
         agg["orig_bytes_list"] = ("orig_bytes", list)
     if "duration" in df.columns:
         agg["duration_list"] = ("duration", list)
+    # Ground-truth etiketler (simulator: is_beacon, CTU-13: is_botnet) —
+    # ciftin herhangi bir baglantisi etiketliyse cift etiketlidir
+    for label_col in ("is_beacon", "is_botnet"):
+        if label_col in df.columns:
+            agg[label_col] = (label_col, "any")
 
     pairs = (
         df.groupby(["src_ip", "dst_ip", "dst_port"], observed=True)
