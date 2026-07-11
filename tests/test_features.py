@@ -6,6 +6,7 @@ import pytest
 from hhunter.features import (
     collapse_bursts,
     delta_stats,
+    dominant_interval,
     extract_features,
     periodicity_features,
 )
@@ -80,7 +81,43 @@ def test_poisson_not_flagged(rng) -> None:
         assert p["schuster_sig"] < 8
 
 
+def test_dominant_interval_isolates_beacon_from_bursts(rng) -> None:
+    """RITA-esini: burst'ler ham CV'yi bozar ama baskin kume beacon'i gorur."""
+    base = _beacon(rng, period=60.0, jitter=0.1)
+    # Her beacon'a 1-2 hizli retry ekle (gercek C2 deseni)
+    extra = np.concatenate([base + rng.uniform(0.1, 2.0), base + rng.uniform(0.1, 2.0)])
+    bursty = np.sort(np.concatenate([base, extra]))
+    assert delta_stats(bursty)["cv"] > 0.8  # ham CV yaniltir
+    dom = dominant_interval(bursty)
+    assert dom["dom_cv"] < 0.25  # baskin kume temiz
+    # dom_mode ya beacon periyodu (60) ya da burst araligi olabilir; ikisi de dar kume
+
+
+def test_dominant_interval_on_clean_beacon(rng) -> None:
+    ts = _beacon(rng, period=90.0, jitter=0.05)
+    dom = dominant_interval(ts)
+    assert abs(dom["dom_mode"] - 90.0) / 90.0 < 0.15
+    assert dom["dom_support"] > 0.8  # neredeyse tum araliklar tek kumede
+    assert dom["dom_cv"] < 0.1
+
+
+def test_dom_support_distinguishes_human_from_beacon(rng) -> None:
+    """dom_cv TEK BASINA yaniltir (kume ±%25 -> mekanik dar). Ayirici: dom_support.
+
+    Beacon'da destek yuksek (araliklarin cogu tek modda); Poisson'da dusuk
+    (mod bir artefakt). Bu test, birlesik kuralin varlik sebebini kilitler.
+    """
+    beacon = dominant_interval(_beacon(rng, period=90.0, jitter=0.1))
+    supports = []
+    for _ in range(10):
+        ts = human_timestamps(rate_per_hour=30, start=0.0, duration=24 * 3600, rng=rng)
+        d = dominant_interval(ts)
+        supports.append(d["dom_support"])
+    assert beacon["dom_support"] > 0.6
+    assert np.median(supports) < 0.4  # insan modu zayif destekli
+
+
 def test_extract_features_keys(rng) -> None:
     feats = extract_features(_beacon(rng))
-    for key in ("raw_cv", "col_cv", "col_mad_cv", "period_est", "schuster_sig"):
+    for key in ("raw_cv", "col_cv", "col_mad_cv", "dom_mode", "dom_cv", "period_est", "schuster_sig"):
         assert key in feats

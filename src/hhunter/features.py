@@ -56,6 +56,34 @@ def delta_stats(ts: np.ndarray) -> dict[str, float]:
     }
 
 
+def dominant_interval(ts: np.ndarray, rel_width: float = 0.25) -> dict[str, float]:
+    """Baskin inter-arrival kumesini bul ve o kume icindeki dagilimu olc.
+
+    RITA (activecm) yaklasimindan esinlendi: gercek C2, beacon araliklarinin
+    yanina retry/coklu-istek burst'leri karistirir. TUM delta'larin CV'si bu
+    yuzden yaniltir (ana CTU-13 C2'sinde 0.47). Cozum: delta'larin log-uzayda
+    en yogun modunu bul, sadece o modun etrafindaki (+-rel_width) delta'lara bak.
+
+    Dondurur:
+    - dom_mode: baskin aralik (saniye) - tahmini beacon periyodu
+    - dom_support: delta'larin ne kadari bu kumede (0-1) - "beacon'in payi"
+    - dom_cv: kume ICINDEKI varyasyon katsayisi - dusukse temiz beacon
+    """
+    d = np.diff(np.sort(np.asarray(ts, dtype=float)))
+    d = d[d > 0]
+    if len(d) < 5:
+        return {"dom_mode": np.nan, "dom_support": np.nan, "dom_cv": np.nan}
+    logd = np.log(d)
+    nbins = max(10, int(np.sqrt(len(d)) * 2))
+    hist, edges = np.histogram(logd, bins=nbins)
+    i = int(hist.argmax())
+    mode = float(np.exp((edges[i] + edges[i + 1]) / 2))
+    mask = np.abs(d - mode) <= rel_width * mode
+    cluster = d[mask]
+    cv = float(cluster.std() / cluster.mean()) if len(cluster) > 2 and cluster.mean() > 0 else np.nan
+    return {"dom_mode": mode, "dom_support": float(mask.mean()), "dom_cv": cv}
+
+
 def schuster_periodogram(
     ts: np.ndarray,
     min_period: float = 10.0,
@@ -178,5 +206,6 @@ def extract_features(ts: np.ndarray, burst_gap: float = 5.0) -> dict[str, float]
     raw = {f"raw_{k}": v for k, v in delta_stats(ts).items()}
     collapsed = collapse_bursts(ts, gap=burst_gap)
     col = {f"col_{k}": v for k, v in delta_stats(collapsed).items()}
+    dom = dominant_interval(ts)  # RITA-esini: burst'lu ham seride bile calisir
     per = periodicity_features(collapsed if len(collapsed) >= MIN_EVENTS else ts)
-    return {**raw, **col, **per, "n_events": len(ts), "n_collapsed": len(collapsed)}
+    return {**raw, **col, **dom, **per, "n_events": len(ts), "n_collapsed": len(collapsed)}
