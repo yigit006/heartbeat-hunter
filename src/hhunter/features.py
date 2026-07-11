@@ -196,6 +196,61 @@ def periodicity_features(ts: np.ndarray) -> dict[str, float]:
     }
 
 
+def permutation_significance(
+    ts: np.ndarray,
+    n_perm: int = 100,
+    min_period: float = 10.0,
+    max_bins: int = 8192,
+    seed: int = 0,
+) -> dict[str, float]:
+    """BAYWATCH-esini ampirik anlamlilik: varsayimsiz null dagilimi.
+
+    schuster_sig'in Exp(1) esigi Poisson varsayimina dayanir; gercek trafik
+    (gunluk ritim, burst) bu varsayimi kirabilir. Cozum (BAYWATCH, DSN 2016):
+    olay sayimlarini zaman kovalarina ayir, KOVALARI n_perm kez karistir,
+    her karistirmada spektrum tepesini olc. Karistirma kova-sayim marjinalini
+    (burst'ler dahil) korur ama kovalarin ZAMANDAKI dizilisini - yani
+    periyodikligi - yok eder. Gozlenen tepe null tepelerinden buyukse gercek.
+
+    NEDEN inter-arrival karistirmak DEGIL: beacon'in araliklari zaten hep ~T;
+    karistirilmis hali de beacon'dir - test korlesir (ilk denemede yasandi,
+    p=0.83 cikti). Periyodiklik burada siralamada degil marjinalde tasinir;
+    kova dizilisi ise pozisyon bilgisini tasir ve karistirmayla gercekten olur.
+
+    MALIYET/BINLEME NOTU: Bu fonksiyon binleme kullanir (Schuster'in binlemesiz
+    guzelligini kaybeder) - o yuzden birincil dedektor DEGIL, huni mimarisinin
+    dogrulama katidir: sadece on-elemeyi gecen adaylara uygulanir.
+
+    Dondurur:
+    - perm_pvalue: gozlenen tepeyi asan permutasyon orani (taban 1/n_perm)
+    - perm_ratio: gozlenen tepe / null medyani - buyukse guclu sinyal
+    """
+    ts = np.sort(np.asarray(ts, dtype=float))
+    if len(ts) < MIN_EVENTS:
+        return {"perm_pvalue": np.nan, "perm_ratio": np.nan}
+    span = ts[-1] - ts[0]
+    if span <= min_period * 4:
+        return {"perm_pvalue": np.nan, "perm_ratio": np.nan}
+    # Kova genisligi: min_period'u cozecek kadar ince (T/4), RAM'i asmayacak kadar kaba
+    bin_w = max(min_period / 4.0, span / max_bins)
+    nbins = int(np.ceil(span / bin_w))
+    counts, _ = np.histogram(ts, bins=nbins)
+    x = counts - counts.mean()
+
+    def _max_power(sig: np.ndarray) -> float:
+        p = np.abs(np.fft.rfft(sig)) ** 2
+        return float(p[1:].max())  # DC bileseni haric
+
+    observed = _max_power(x)
+    rng = np.random.default_rng(seed)
+    null_max = np.array([_max_power(rng.permutation(x)) for _ in range(n_perm)])
+    exceed = float((null_max >= observed).mean())
+    return {
+        "perm_pvalue": max(exceed, 1.0 / n_perm),
+        "perm_ratio": observed / float(np.median(null_max)),
+    }
+
+
 def extract_features(ts: np.ndarray, burst_gap: float = 5.0) -> dict[str, float]:
     """Bir ciftin tam ozellik vektoru: ham + burst-katlanmis istatistikler.
 
