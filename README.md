@@ -85,13 +85,17 @@ hhunter campaign scored.parquet          # kampanya adayları
 
 ![PR eğrileri](docs/img/pr_curves.png)
 
-| Senaryo | Sıralayıcı | İlk CC sırası | R@100 | R@500 |
+| Senaryo | İlk CC: naif −CV | İlk CC: bileşik | R@100: naif | R@100: bileşik |
 |---|---|---|---|---|
-| S1/42 (Neris, 1 bot) | naif −CV (baseline) | 59 | 0.25 | 0.50 |
-| S1/42 (Neris, 1 bot) | bileşik skor | **37** | 0.25 | 0.50 |
-| S9/50 (Neris, 10 bot) | naif −CV (baseline) | 87 | 0.16 | 0.27 |
-| S9/50 (Neris, 10 bot) | bileşik skor | **46** | 0.10 | **0.41** |
-| S9/50 (Neris, 10 bot) | **kampanya (hedef düzeyi)** | **#1 / 94 aday** | — | — |
+| S1/42 (Neris, 1 bot) | 59 | **37** | 0.25 | 0.25 |
+| S2/43 (Neris, 1 bot) | 869 | **89** | 0.00 | **0.17** |
+| S9/50 (Neris, 10 bot) | 87 | **46** | 0.16 | 0.10 (R@500: 0.27→**0.41**) |
+| S13/54 (Virut, 1 bot) | 1.091 | **89** | 0.00 | **0.25** |
+
+Bileşik skor dört senaryonun dördünde de ilk-CC sırasını iyileştiriyor;
+S2'de 10×, farklı ailede (Virut) 12×. Çok-bot'lu S9'da ek katman devreye
+girer: **kampanya düzeyinde gerçek C2, 94 aday arasında #1** (tek-bot
+yakalamalarda ≥2 kaynak şartı mekanik olarak sağlanamaz — dürüst sınır).
 
 Katmanlı okuma: kanal düzeyinde, binlerce meşru periyodik yoklama (e-posta,
 izleme, update) arasında C2'yi tek başına ayırmak istatistiksel dedektörlerin
@@ -120,7 +124,8 @@ hhunter --help
 - [x] Hafta 3: Bileşik skorlama (zaman+bayt+bağlam) + permütasyon anlamlılığı + huni filtresi
 - [x] Hafta 3: Graf analizi / kampanya tespiti (networkx) — `hhunter campaign`
 - [x] Hafta 4: Çok-hostlu senaryo (S9) + değerlendirme altyapısı + PR eğrileri
-- [ ] Hafta 4 kalan: üçüncü uygun senaryo (S2/S13), README mini-makale, CLI `--json`
+- [x] Hafta 4: 4 senaryoda değerlendirme (Neris ×3 + Virut) — aile-ötesi genelleme
+- [ ] Hafta 4 kalan: README mini-makale cilası, CLI `--json`
 - [ ] Hafta 4: CTU-13 değerlendirmesi (precision/recall) + dokümantasyon
 
 ## Lisans

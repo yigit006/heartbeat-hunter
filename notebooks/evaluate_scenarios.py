@@ -34,7 +34,9 @@ IMG = Path(__file__).resolve().parents[1] / "docs" / "img"
 
 SCENARIOS = {
     "S1/42 (Neris, 1 bot)": "ctu42_scored.parquet",
+    "S2/43 (Neris, 1 bot)": "ctu02_scored.parquet",
     "S9/50 (Neris, 10 bot)": "ctu09_scored.parquet",
+    "S13/54 (Virut, 1 bot)": "ctu13_scored.parquet",
 }
 
 
@@ -67,7 +69,7 @@ def rankers(scored: pd.DataFrame) -> dict[str, np.ndarray]:
 
 
 def main() -> None:
-    fig, axes = plt.subplots(1, len(SCENARIOS), figsize=(11, 4.2), sharey=True)
+    fig, axes = plt.subplots(1, len(SCENARIOS), figsize=(4.6 * len(SCENARIOS), 4.2), sharey=True)
     rows = []
     for ax, (label, fname) in zip(np.atleast_1d(axes), SCENARIOS.items()):
         scored = pd.read_parquet(DATA / fname)
