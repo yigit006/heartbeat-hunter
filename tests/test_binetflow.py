@@ -8,10 +8,10 @@ from hhunter.ingest import group_pairs, read_binetflow
 
 BINETFLOW_SAMPLE = """\
 StartTime,Dur,Proto,SrcAddr,Sport,Dir,DstAddr,Dport,State,sTos,dTos,TotPkts,TotBytes,SrcBytes,Label
-2011/08/10 09:46:53.047277,1.026539,tcp,147.32.84.165,1025,   ->,74.125.232.195,80,SF,0,0,10,1200,600,flow=From-Botnet-V42-TCP-CC
-2011/08/10 09:47:53.140000,0.950000,tcp,147.32.84.165,1026,   ->,74.125.232.195,80,SF,0,0,9,1100,590,flow=From-Botnet-V42-TCP-CC
-2011/08/10 09:48:53.500000,1.100000,tcp,147.32.84.165,1027,   ->,74.125.232.195,80,SF,0,0,11,1250,610,flow=From-Botnet-V42-TCP-CC
-2011/08/10 09:49:52.900000,1.000000,tcp,147.32.84.165,1028,   ->,74.125.232.195,80,SF,0,0,10,1210,605,flow=From-Botnet-V42-TCP-CC
+2011/08/10 09:46:53.047277,1.026539,tcp,147.32.84.165,1025,   ->,74.125.232.195,80,SF,0,0,10,1200,600,flow=From-Botnet-V42-TCP-CC16-HTTP-Not-Encrypted
+2011/08/10 09:47:53.140000,0.950000,tcp,147.32.84.165,1026,   ->,74.125.232.195,80,SF,0,0,9,1100,590,flow=From-Botnet-V42-TCP-CC16-HTTP-Not-Encrypted
+2011/08/10 09:48:53.500000,1.100000,tcp,147.32.84.165,1027,   ->,74.125.232.195,80,SF,0,0,11,1250,610,flow=From-Botnet-V42-TCP-Attempt-SPAM
+2011/08/10 09:49:52.900000,1.000000,tcp,147.32.84.165,1028,   ->,74.125.232.195,80,SF,0,0,10,1210,605,flow=From-Botnet-V42-TCP-CC16-HTTP-Not-Encrypted
 2011/08/10 09:50:10.000000,5.300000,tcp,147.32.84.10,50001,   ->,8.8.8.8,443,SF,0,0,50,60000,20000,flow=Background
 2011/08/10 09:51:20.000000,0.001000,udp,147.32.84.11,5060,   ->,10.0.0.1,0x0303,CON,0,0,2,200,100,flow=Background-UDP
 2011/08/10 09:52:00.000000,,tcp,147.32.84.12,1111,   ->,1.2.3.4,,S0,0,0,1,60,60,flow=Background
@@ -37,6 +37,13 @@ def test_botnet_labels(binetflow: Path) -> None:
     df = read_binetflow(binetflow)
     assert df["is_botnet"].sum() == 4
     assert (df[df["is_botnet"]]["src_ip"] == "147.32.84.165").all()
+
+
+def test_cc_labels(binetflow: Path) -> None:
+    df = read_binetflow(binetflow)
+    # 4 botnet akisinin 3'u CC (biri SPAM); arka plan asla CC degil
+    assert df["is_cc"].sum() == 3
+    assert not df[~df["is_botnet"]]["is_cc"].any()
 
 
 def test_hex_port_parsed(binetflow: Path) -> None:

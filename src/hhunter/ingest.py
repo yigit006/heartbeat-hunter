@@ -102,6 +102,10 @@ def read_binetflow(path: str | Path) -> pd.DataFrame:
             "duration": pd.to_numeric(df["Dur"], errors="coerce"),
             "orig_bytes": pd.to_numeric(df["SrcBytes"], errors="coerce"),
             "is_botnet": df["Label"].str.contains("Botnet", case=False, na=False),
+            # CC = command & control kanali: beaconing'in asil ground-truth'u.
+            # 'Botnet' etiketi spam/DNS/tarama dahil TUM enfekte trafigi kapsar;
+            # CC ise sadece C2 kanallarini isaretler (orn. ...-TCP-CC16-HTTP-...)
+            "is_cc": df["Label"].str.contains(r"-CC\d*(?:-|$)", regex=True, na=False),
         }
     )
     out = out.dropna(subset=["ts", "src_ip", "dst_ip", "dst_port"])
@@ -127,7 +131,19 @@ def group_pairs(df: pd.DataFrame, min_connections: int = 4) -> pd.DataFrame:
 
     Dondurulen DataFrame: her satir bir cift; 'timestamps' kolonu siralanmis
     ts listesi, 'orig_bytes_list' bayt listesi (Katman 2'de kullanilacak).
+
+    Performans: once ucuz bir sayimla (groupby.size) esigi gecemeyen ciftler
+    elenir; pahali liste toplama sadece kalan azinlik icin yapilir. 2.8M akisli
+    CTU-13 senaryosunda bu, milyonlarca grubun listeye cevrilmesini onler
+    (bellek tasmasi yasandi, bu tasarima gecildi).
     """
+    keys = ["src_ip", "dst_ip", "dst_port"]
+    counts = df.groupby(keys, observed=True).size()
+    eligible = counts[counts >= min_connections].index
+    if len(eligible) == 0:
+        return pd.DataFrame(columns=[*keys, "timestamps", "count", "first_seen", "last_seen"])
+    df = df.set_index(keys).loc[eligible].reset_index()
+
     agg: dict[str, tuple[str, object]] = {
         "timestamps": ("ts", list),
         "count": ("ts", "size"),
@@ -140,13 +156,9 @@ def group_pairs(df: pd.DataFrame, min_connections: int = 4) -> pd.DataFrame:
         agg["duration_list"] = ("duration", list)
     # Ground-truth etiketler (simulator: is_beacon, CTU-13: is_botnet) —
     # ciftin herhangi bir baglantisi etiketliyse cift etiketlidir
-    for label_col in ("is_beacon", "is_botnet"):
+    for label_col in ("is_beacon", "is_botnet", "is_cc"):
         if label_col in df.columns:
             agg[label_col] = (label_col, "any")
 
-    pairs = (
-        df.groupby(["src_ip", "dst_ip", "dst_port"], observed=True)
-        .agg(**agg)
-        .reset_index()
-    )
-    return pairs[pairs["count"] >= min_connections].reset_index(drop=True)
+    pairs = df.groupby(keys, observed=True).agg(**agg).reset_index()
+    return pairs.reset_index(drop=True)
